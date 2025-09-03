@@ -1,21 +1,23 @@
-from pydub import AudioSegment
-import os
+import numpy as np
+import librosa
+import soundfile as sf
 
 def amplify_audio(input_file):
     # โหลดไฟล์เสียง
-    audio = AudioSegment.from_file(input_file)
+    y, sr = librosa.load(input_file, sr=None)
     
-    # คำนวณ headroom = ระยะห่างจาก peak ของเสียงถึง 0 dBFS
-    headroom  = 0.0 - audio.max_dBFS
+    max_val = np.max(np.abs(y))
+
+    if max_val > 0:
+        y_new = (1.0 /max_val) * y
+    else:
+        y_new = y
+
     
-    # เลือก gain ที่น้อยกว่าหรือเท่ากับ headroom (สูงสุด 10 dB)
-    gain_dB = min(7, headroom)
-
-    # เพิ่มเสียงโดยไม่เกิน headroom
-    louder_audio = audio.apply_gain(gain_dB)
-
     output_path = './temp_output_amp.wav'
-    louder_audio.export(output_path, format='wav')
-    print(f"Audio amplified by {gain_dB} dB, saved to {output_path}")
+
+    sf.write(output_path, y_new, sr)
+    print("Amplified audio saved to:", output_path)
 
     return output_path
+ 
