@@ -16,6 +16,7 @@ from utils.preprocess_the_image import convert_to_array
 from sensor.servo_control import set_angle,cleanup
 from sensor.stepper_controls import setup_gpio, motor_control, reset_motors_position
 from sensor.IR_sensor import read_ir_sensor
+from sensor.Ultrasonic_control import detection_with_ultrasonic
 from service.amplify import amplify_audio   
 
 Image.MAX_IMAGE_PIXELS = None
@@ -31,7 +32,8 @@ if __name__ == "__main__":
         print("System is ready, waiting for IR sensor trigger...")
 
         while True:
-            if read_ir_sensor() == 0:
+            # if read_ir_sensor() == 0:
+            if detection_with_ultrasonic(threshold=10) == 0: # Distance threshold 10 cm
 
                 print(f"Recording for {duration} seconds...")
                 recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='float32')

@@ -33,3 +33,35 @@ try:
             time.sleep(step_delay)
 finally:
     GPIO.cleanup()
+
+
+# Predict the image grayscale
+# =================================================================
+img_size = (256, 256)
+import tensorflow as tf
+import numpy as np
+from tensorflow import keras
+
+# โหลดโมเดล
+model = keras.models.load_model("my_model.h5")
+
+img_path = "test.png"
+
+# โหลดภาพเป็น grayscale และ resize
+img = tf.keras.utils.load_img(img_path, color_mode="grayscale", target_size=img_size)
+img_array = tf.keras.utils.img_to_array(img)  # shape (H,W,1)
+
+# Normalize เหมือนตอน train (0-1)
+img_array = img_array / 255.0
+
+# เพิ่ม batch dimension -> (1, H, W, 1)
+img_array = np.expand_dims(img_array, axis=0)
+
+# predict
+pred = model.predict(img_array)
+
+# ถ้า label_mode='int' ใช้ softmax
+pred_class = np.argmax(pred, axis=1)
+print("Predicted class:", pred_class)
+
+# ==================================================================
