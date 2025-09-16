@@ -2,7 +2,7 @@ from pydub import AudioSegment
 from pydub.silence import detect_nonsilent 
 import os 
 
-def cut_sound_per_action(input_path, output_dir, sample_rate, action_duration=400, length_duration=1200):
+def cut_sound_per_action(input_path, output_dir, sample_rate, action_duration=400, length_duration=1000):
     print("Cutting sound per action . . . ")
 
     # Ensure output directory exists
