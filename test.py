@@ -1,122 +1,148 @@
-# Fast single HC-SR04 drop-pass detector (µs-accurate, non-blocking)
-# - Uses only d1 (TRIG1/ECHO1)
-# - Faster cycle (default ~12 ms) for quick passes
-# - Hysteresis: NEAR < FAR_RELEASE
-# - pigpio glitch filter + watchdog for robust edges
-# - Keeps your print format and LED_status_color()
+"""
+HC-SR04 drop-pass detector (µs-accurate, non-blocking) for pigpio.
+- Provides a class you can import and call like an IR sensor:
+    detector.read() -> 0 (NEAR / detected) or 1 (FAR / not detected)
+- Hysteresis + dead-zone release to avoid sticky states.
+- No LED calls here; handle LEDs in your app to keep responsibilities clean.
+"""
 
 import time
 import pigpio
-from sensor.LED_status import LED_status_color
 
-# ========= Pins (BCM) =========
-TRIG1, ECHO1 = 26, 25   # <- your d1
+US_PER_CM_ROUND_TRIP = 58.0
 
-# ========= Tunables =========
-NEAR_CM         = 15.0   # detect as NEAR when below this
-FAR_CM_RELEASE  = 19.0   # release back to FAR when above this (must be > NEAR_CM)
-CYCLE_MS        = 12     # re-ping interval for the sensor (try 10–15 ms; increase if you see false echoes)
-PRINT_EVERY_MS  = 100    # status print interval
+class DropPassDetector:
+    def __init__(
+        self,
+        TRIG: int = 26,
+        ECHO: int = 25,
+        # NOTE: For idle ~16.2 cm, use NEAR below idle, FAR above idle.
+        # FAR must be > NEAR (hysteresis gap ~1–2 cm typically).
+        NEAR_CM: float = 15.6,       # into NEAR when d < NEAR_CM
+        FAR_CM_RELEASE: float = 17.0,# back to FAR when d > FAR_CM_RELEASE
+        CYCLE_MS: int = 12,
+        DEADZONE_TIMEOUT_MS: int = 120,
+        glitch_filter_us: int = 100,
+        watchdog_ms: int = 25,
+    ):
+        if FAR_CM_RELEASE <= NEAR_CM:
+            raise ValueError("FAR_CM_RELEASE must be > NEAR_CM for hysteresis")
 
-US_PER_CM_ROUND_TRIP = 58.0  # ~58 µs per cm round-trip
+        self.TRIG = TRIG
+        self.ECHO = ECHO
+        self.NEAR_CM = NEAR_CM
+        self.FAR_CM_RELEASE = FAR_CM_RELEASE
+        self.CYCLE_MS = CYCLE_MS
+        self.DEADZONE_TIMEOUT_MS = DEADZONE_TIMEOUT_MS
 
-# ========= Init pigpio =========
-pi = pigpio.pi()
-if not pi.connected:
-    raise RuntimeError("pigpio not running. Start with: sudo systemctl enable --now pigpiod")
+        self.pi = pigpio.pi()
+        if not self.pi.connected:
+            raise RuntimeError("pigpio not running. Start with: sudo systemctl enable --now pigpiod")
 
-# TRIG output
-pi.set_mode(TRIG1, pigpio.OUTPUT)
-pi.write(TRIG1, 0)
+        # GPIO setup
+        self.pi.set_mode(self.TRIG, pigpio.OUTPUT)
+        self.pi.write(self.TRIG, 0)
+        self.pi.set_mode(self.ECHO, pigpio.INPUT)
+        self.pi.set_pull_up_down(self.ECHO, pigpio.PUD_OFF)
+        self.pi.set_glitch_filter(self.ECHO, glitch_filter_us)
+        self.pi.set_watchdog(self.ECHO, watchdog_ms)
 
-# ECHO input + filters
-pi.set_mode(ECHO1, pigpio.INPUT)
-pi.set_pull_up_down(ECHO1, pigpio.PUD_OFF)
-pi.set_glitch_filter(ECHO1, 100)  # ignore <100 µs glitches
-pi.set_watchdog(ECHO1, 25)        # level==2 if no edge within 25 ms (clears stuck state)
+        # measurement state
+        self._latest_cm = float("inf")
+        self._rise_tick = None
+        self._cb = self.pi.callback(self.ECHO, pigpio.EITHER_EDGE, self._echo_cb)
 
-# ========= Echo timing state =========
-latest_cm  = float("inf")
-_rise_tick = None
+        # detection state
+        self._current_state = 1   # 1=FAR, 0=NEAR
+        self._armed = True        # re-arms in FAR
+        self._last_near_ms = 0
+        self._next_ping_ms = 0
 
-def _echo_cb(gpio, level, tick):
-    global _rise_tick, latest_cm
-    if level == 1:  # rising edge
-        _rise_tick = tick
-    elif level == 0 and _rise_tick is not None:  # falling edge
-        width_us = pigpio.tickDiff(_rise_tick, tick)
-        latest_cm = width_us / US_PER_CM_ROUND_TRIP
-        _rise_tick = None
-    elif level == 2:  # watchdog timeout -> treat as no echo
-        latest_cm = float("inf")
-        _rise_tick = None
+    # ====== pigpio echo callback ======
+    def _echo_cb(self, gpio, level, tick):
+        if level == 1:  # rising
+            self._rise_tick = tick
+        elif level == 0 and self._rise_tick is not None:  # falling
+            width_us = pigpio.tickDiff(self._rise_tick, tick)
+            self._latest_cm = width_us / US_PER_CM_ROUND_TRIP
+            self._rise_tick = None
+        elif level == 2:  # watchdog (no echo)
+            self._latest_cm = float("inf")
+            self._rise_tick = None
 
-cb = pi.callback(ECHO1, pigpio.EITHER_EDGE, _echo_cb)
+    # ====== internal ======
+    def _trigger(self):
+        # 10 µs HIGH pulse
+        self.pi.gpio_trigger(self.TRIG, 10, 1)
 
-def _trigger():
-    # ~10 µs pulse; done in C (non-blocking)
-    pi.gpio_trigger(TRIG1, 10, 1)
+    def _now_ms(self):
+        return int(time.time() * 1000)
 
-# ========= Detection (FAR->NEAR edge) =========
-armed = True          # only fire "Detected !!" when re-armed in FAR
-current_state = 1     # 1=FAR, 0=NEAR
-last_led = None
-last_print_ms = 0
-next_ping_ms = 0
+    def _step(self):
+        """Run one fast step: ping, update hysteresis, manage dead-zone."""
+        now_ms = self._now_ms()
 
-try:
-    LED_status_color("Green")
+        # Fast pinging
+        if now_ms >= self._next_ping_ms:
+            self._trigger()
+            self._next_ping_ms = now_ms + self.CYCLE_MS
 
-    while True:
-        now_ms = int(time.time() * 1000)
-
-        # Rapidly ping this single sensor on its own schedule
-        if now_ms >= next_ping_ms:
-            _trigger()
-            next_ping_ms = now_ms + CYCLE_MS
-
-        d1 = latest_cm
-
-        # Decide NEAR/FAR with hysteresis
-        near_now = (d1 < NEAR_CM)
-        far_now  = (d1 > FAR_CM_RELEASE) or (d1 == float("inf"))
+        d = self._latest_cm
+        near_now = (d < self.NEAR_CM)
+        far_now  = (d > self.FAR_CM_RELEASE) or (d == float("inf"))
 
         if near_now:
-            current_state = 0
+            self._current_state = 0
+            self._last_near_ms = now_ms
         elif far_now:
-            current_state = 1
+            self._current_state = 1
+
+        # Dead-zone release if stuck between thresholds
+        if (not near_now) and (not far_now) and self._current_state == 0:
+            if now_ms - self._last_near_ms > self.DEADZONE_TIMEOUT_MS:
+                self._current_state = 1
 
         # Re-arm in FAR
-        if far_now:
-            armed = True
+        if self._current_state == 1:
+            self._armed = True
 
-        # Fire only on FAR->NEAR transition (fast, single hit)
-        if armed and near_now:
-            print("Detected !!")
-            armed = False
-            current_state = 0
+    # ====== public APIs ======
+    def read(self) -> int:
+        """
+        Drop-in replacement style:
+        - Returns 0 when NEAR (detected)
+        - Returns 1 when FAR  (not detected)
+        Call this frequently inside your main loop (e.g., every iteration).
+        """
+        self._step()
+        return self._current_state  # 0 or 1
 
-        # LED: Red when NEAR, Green when FAR
-        desired_led = "Red" if current_state == 0 else "Green"
-        if desired_led != last_led:
-            LED_status_color(desired_led)
-            last_led = desired_led
+    def edge_detected(self) -> bool:
+        """
+        Returns True exactly once on FAR->NEAR transitions ("Detected !!").
+        Read it in your loop if you want a one-shot trigger.
+        """
+        prev_armed = self._armed
+        # _step already re-arms in FAR; we need to see if we just went NEAR while armed
+        self._step()
+        if self._armed and self._current_state == 0:
+            # not triggered yet; after going NEAR, disarm and report True once
+            self._armed = False
+            return True
+        return False if prev_armed or self._current_state == 1 else False
 
-        # Print status in your original style (d1 only)
-        if now_ms - last_print_ms >= PRINT_EVERY_MS:
-            d1s = "err" if d1 == float("inf") else f"{d1:5.1f}"
-            print(f"{'NEAR' if current_state==0 else 'FAR '} | d1={d1s} cm")
-            last_print_ms = now_ms
+    def distance_cm(self) -> float:
+        """Latest measured distance in cm (float('inf') if no echo yet)."""
+        return self._latest_cm
 
-        time.sleep(0.001)  # 1 ms loop tick
-
-except KeyboardInterrupt:
-    pass
-finally:
-    try:
-        LED_status_color("Green")
-    except Exception:
-        pass
-    cb.cancel()
-    pi.write(TRIG1, 0)
-    pi.stop()
+    def close(self):
+        try:
+            if self._cb is not None:
+                self._cb.cancel()
+                self._cb = None
+        finally:
+            try:
+                self.pi.write(self.TRIG, 0)
+            except Exception:
+                pass
+            self.pi.stop()

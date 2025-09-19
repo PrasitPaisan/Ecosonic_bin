@@ -10,7 +10,7 @@ from sensor.LED_status import LED_status_color
 TRIG1, ECHO1 = 26, 25
 
 # ========= Tunables =========
-NEAR_CM         = 17.0    # detect NEAR when below this
+NEAR_CM         = 16.0    # detect NEAR when below this
 FAR_CM_RELEASE  = 15.6    # release back to FAR when above this (must be > NEAR_CM)
 CYCLE_MS        = 12      # 10–15 ms is typical; lower = faster
 PRINT_EVERY_MS  = 150

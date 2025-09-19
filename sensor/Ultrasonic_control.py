@@ -1,3 +1,4 @@
+# sensor/ultra_drop_pass.py
 """
 HC-SR04 drop-pass detector (µs-accurate, non-blocking) for pigpio.
 - Provides a class you can import and call like an IR sensor:
