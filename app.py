@@ -13,29 +13,32 @@ from service.converting_sound_to_mel_image import sound_to_image, sound_to_image
 from utils.preprocess_the_image import convert_to_array
 from sensor.servo_control import set_angle,cleanup
 from sensor.stepper_controls import setup_gpio, motor_control, reset_motors_position
-from sensor.Ultrasonic_control import detection_fast
+from sensor.Ultrasonic_control import DropPassDetector
 from sensor.LED_status import LED_status_color
+from sensor.IR_sensor import read_ir_sensor
 from service.amplify import amplify_audio   
 
 Image.MAX_IMAGE_PIXELS = None
 
 if __name__ == "__main__":
+    print("Hello world")
     try:
         class_names = ['battery', 'bottle', 'box', 'can', 'glass', 'paper', 'pingpong']
-        model = load_model("./models/resnet34_mel_mfcc.h5")
+        model = load_model("./models/resnet34_mel_mfcc_100each.h5")
         sample_rate = 22050
-        duration = 3 # sec
+        duration = 2 # sec
 
         setup_gpio()
+        detector = DropPassDetector(TRIG=26, ECHO=25, NEAR_CM=16.0, FAR_CM_RELEASE=20.0, CYCLE_MS=12)
         print("System is ready, waiting for IR sensor trigger...")
 
         while True:
             # if read_ir_sensor() == 0:
-            # LED_status_color("Green")
+            state =  detector.read()
+            LED_status_color("Green")
 
-            status = 1
-            if status == 0:
-                # LED_status_color("Red")
+            if state == 0:
+                LED_status_color("Red")
                 print("Detected !!")
 
                 print(f"Recording for {duration} seconds...")
@@ -63,7 +66,7 @@ if __name__ == "__main__":
                 sound_to_image_mel_mfcc(dataset_path="./results/sound", output_path="./images", n_mels=128, n_mfcc=20, n_fft=2048, hop_length=512)
 
                 # Predict the image
-                class_predicted = []
+                all_preds = []
                 for dirpath, dirnames, filenames in os.walk("./images"):
                     for f in filenames:
                         if f.endswith('.png'):
@@ -72,13 +75,16 @@ if __name__ == "__main__":
                             print(img_array.shape)
                             pred = model.predict(img_array)
                             predicted_class_index = pred.argmax(axis=1)[0]
-                            class_predicted.append(predicted_class_index)
-                
-                
-                if class_predicted:
-                    for i in range(len(class_predicted)):
-                        print(f"Rotating motor for class: {class_names[class_predicted[i]]} : {class_predicted[i]}")
-                    motor_control(int(class_predicted[0]))
+                            pred_max = pred.max()
+                            all_preds.append((predicted_class_index, pred_max))
+                if all_preds:
+                    print("Class predictions and confidences:")
+                    for idx, (class_idx, confidence) in enumerate(all_preds):
+                        print(f"Image {idx+1}: {class_names[class_idx]} (class {class_idx}), confidence: {confidence * 100}%")
+                    # Find best class
+                    best_idx, best_conf = max(all_preds, key=lambda x: x[1])
+                    print(f"Best class: {class_names[best_idx]} (class {best_idx}), confidence: {best_conf * 100}%")
+                    motor_control(int(best_idx))
                     time.sleep(0.2)
                     set_angle(120)
                     time.sleep(2)

@@ -1,7 +1,7 @@
 import RPi.GPIO as GPIO
 import time
 
-servo_pin = 22
+servo_pin = 13
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(servo_pin, GPIO.OUT)
@@ -27,10 +27,12 @@ def cleanup():
 
 if __name__ == "__main__":
     try:
-        set_angle(90)  # Set to default position
-        time.sleep(2)
-        set_angle(0)
-        time.sleep()
+        while True:
+            degree = int(input("Input degree of servo : "))
+            set_angle(degree)  # Set to default position
+            time.sleep(2)
+            set_angle(0)
+            time.sleep(0.5)
     except KeyboardInterrupt:
         print("Exiting program")
         cleanup()

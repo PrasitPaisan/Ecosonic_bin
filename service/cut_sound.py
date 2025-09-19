@@ -9,7 +9,7 @@ def cut_sound_per_action(input_path, output_dir, sample_rate, action_duration=40
     os.makedirs(output_dir, exist_ok=True)
     
     sound = AudioSegment.from_file(input_path)
-    nonsilent_ranges = detect_nonsilent(sound, min_silence_len=action_duration, silence_thresh=-40 )
+    nonsilent_ranges = detect_nonsilent(sound, min_silence_len=action_duration, silence_thresh=-35 )
     
     if not nonsilent_ranges:
         print("No sound detection in this file")
