@@ -10,7 +10,7 @@ SAMPLE_RATE = 22050
 n_fft = 2048
 n_mels = 128
 n_mfcc = 20
-hop_length = 512          # แก้จาก hope_length -> hop_length
+hop_length = 512          
 target_size = (224, 224)
 
 def sound_to_image_mel_mfcc(dataset_path, output_path, n_mels=n_mels,n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length):
