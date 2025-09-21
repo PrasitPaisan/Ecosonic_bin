@@ -20,7 +20,8 @@ def reduce_audio_noise(
     )
 
     # Save output
-    # sf.write(output_path, reduced_noise_audio, sr)
+    output_path = "temp_input.wav"
+    sf.write(output_path, reduced_noise_audio, sr)
     print(f" ===> Finished noise reduction <===")
 
-    return reduced_noise_audio, sr
+    return output_path

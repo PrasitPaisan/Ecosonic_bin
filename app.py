@@ -8,8 +8,10 @@ from scipy.io.wavfile import write
 import time
 
 from service.cut_sound import cut_sound_per_action
+from service.cut_sound_splite_on_silence import cut_sound_per_action_split_on_silence
 from utils.plot_compare import plot_compare
 from service.converting_sound_to_mel_image import sound_to_image, sound_to_image_mel_mfcc
+from service.redution import reduce_audio_noise
 from utils.preprocess_the_image import convert_to_array
 from sensor.servo_control import set_angle, cleanup
 from sensor.stepper_controls import setup_gpio, motor_control, reset_motors_position
@@ -20,16 +22,18 @@ from service.amplify import amplify_audio
 Image.MAX_IMAGE_PIXELS = None
 
 if __name__ == "__main__":
-    print("Hello world")
     detector = None
     try:
+        LED_status_color("Red")
         class_names = ['battery', 'bottle', 'box', 'can', 'glass', 'paper', 'pingpong']
-        model = load_model("./models/resnet34_mel_mfcc.h5")
+        model_name = "resnet34_mel_mfcc.h5"
+        model = load_model(f"./models/{model_name}")
+
         sample_rate = 22050
-        duration = 3  # sec
+        duration =  2  # sec
 
         setup_gpio()
-        detector = DropPassDetector(TRIG=26, ECHO=25, NEAR_CM=15.6, FAR_CM_RELEASE=17.0, CYCLE_MS=12)
+        detector = DropPassDetector(TRIG=26, ECHO=25, NEAR_CM=17, FAR_CM_RELEASE=18, CYCLE_MS=12)
 
         print("System is ready, waiting for ultrasonic trigger...")
 
@@ -49,10 +53,13 @@ if __name__ == "__main__":
                 input_path = "temp_input.wav"
                 start_time = time.time()
                 write(input_path, sample_rate, recording)
-
+                # # reduction
+                # reduction_noise_path = reduce_audio_noise(input_path)
+                # rescale audio
                 amplified_path = amplify_audio(input_path)
 
                 check_action = cut_sound_per_action(amplified_path, "./results/sound", sample_rate)
+                # check_action = cut_sound_per_action_split_on_silence(amplified_path, "./results/sound", action_duration=400, length_duration=1000)
                 if not check_action:
                     print("No actions detected, skipping processing.")
                     os.remove(amplified_path)

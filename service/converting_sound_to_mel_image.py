@@ -13,7 +13,7 @@ n_mfcc = 20
 hop_length = 512          # แก้จาก hope_length -> hop_length
 target_size = (224, 224)
 
-def sound_to_image_mel_mfcc(dataset_path, output_path, n_mels=256,n_mfcc=20, n_fft=2048, hop_length=256):
+def sound_to_image_mel_mfcc(dataset_path, output_path, n_mels=n_mels,n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length):
     print(f"Converting sound to mel spectrogram imgage . . . {dataset_path}")
     for dirpath, dirnames, filenames in os.walk(dataset_path):
         for f in filenames:
