@@ -30,7 +30,7 @@ import os
 
 def cut_sound_per_action(input_path, output_dir, sample_rate=None,
                          action_duration=500, length_duration=700,
-                         silence_thresh=-35, frame_ms=5):
+                         silence_thresh=-40, frame_ms=5):
     """
     Cut sound into segments:
     - ใช้ detect_nonsilent() เหมือนเดิม

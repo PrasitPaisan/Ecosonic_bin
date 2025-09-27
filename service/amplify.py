@@ -18,7 +18,7 @@ def amplify_audio(input_file, action_duration=400,silence_thresh=-45):
     y, sr = librosa.load(input_file, sr=None)
 
     max_val = np.max(np.abs(y))
-    max_target_rescale = .6
+    max_target_rescale = .5
     if max_val > 0 and max_val < max_target_rescale:
         y_new = (max_target_rescale /max_val) * y
     else:

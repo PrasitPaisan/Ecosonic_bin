@@ -20,6 +20,18 @@ from sensor.Ultrasonic_control import DropPassDetector      # <-- add this
 from service.amplify import amplify_audio
 
 Image.MAX_IMAGE_PIXELS = None
+sd.default.samplerate = 22050
+sd.default.channels = 1
+# class_names = ['battery', 'bottle', 'box', 'can', 'glass', 'paper', 'pingpong']
+def idx_switching(old_index):
+    if old_index == 0:
+        return 5
+    elif old_index == 5:
+        return 0 
+    else:
+        return old_index
+
+
 
 def process_and_predict(model, class_names, amplified_path, input_path, sample_rate):
     check_action = cut_sound_per_action(amplified_path, "./results/sound", sample_rate)
@@ -75,16 +87,18 @@ if __name__ == "__main__":
     try:
         LED_status_color("Red")
         class_names = ['battery', 'bottle', 'box', 'can', 'glass', 'paper', 'pingpong']
-        model_name = "Resnet34_Mel_MFCC_1SEC_100each_noise70%_Rescaling_max_07SEC400-40.h5"
+        model_name = "Resnet34_Mel_MFCC_added_realuser6_100each_noise70%_Rescaling_max_07SEC400-40.h5"
         model = load_model(f"./models/{model_name}")
+        print(f"Run by model :  {model_name}")
 
-        sample_rate = 22050
-        duration = 1.5  # sec
+        sample_rate = sd.default.samplerate
+        duration = 1.5 # sec 1.5
 
         setup_gpio()
-        detector = DropPassDetector(TRIG=26, ECHO=25, NEAR_CM=17, FAR_CM_RELEASE=18, CYCLE_MS=12)
+        detector = DropPassDetector(TRIG=26, ECHO=25, NEAR_CM=18.5, FAR_CM_RELEASE=19, CYCLE_MS=12)
 
         print("System is ready, waiting for ultrasonic trigger...")
+        print(sd.query_devices())
 
         while True:
             state = detector.read()
@@ -110,15 +124,17 @@ if __name__ == "__main__":
 
                 best_idx = process_and_predict(model, class_names, amplified_path, input_path, sample_rate)
                 if best_idx is not None:
+                    best_idx = idx_switching(best_idx)
                     motor_control(int(best_idx))
                     time.sleep(0.2)
-                    set_angle(120)
+                    set_angle(45)
                     time.sleep(1)
                     set_angle(0)
 
-                cleanup_artifacts(amplified_path, input_path)
+                
                 end_time = time.time()
                 print(f"Processing time: {end_time - start_time:.2f} seconds")
+                cleanup_artifacts(amplified_path, input_path)
 
             time.sleep(0.001)
 
