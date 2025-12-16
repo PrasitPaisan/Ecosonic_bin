@@ -31,12 +31,6 @@ import os
 def cut_sound_per_action(input_path, output_dir, sample_rate=None,
                          action_duration=500, length_duration=700,
                          silence_thresh=-40, frame_ms=5):
-    """
-    Cut sound into segments:
-    - ใช้ detect_nonsilent() เหมือนเดิม
-    - แต่เลื่อนจุดเริ่ม (start) ไปที่มิลลิวินาทีแรกที่เสียงดังเกิน silence_thresh (-35 dBFS)
-    - เติม silence ถ้าสั้นกว่า length_duration และตัดให้ครบ
-    """
 
     print("Cutting sound per action . . .")
 
