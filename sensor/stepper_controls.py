@@ -10,8 +10,8 @@ CURRENT_MO1 = 0
 CURRENT_MO2 = 3
 
 # DIR pin level to move in the +position direction (0->1->2->3)
-DIR_POS_LEVEL_M1 = 1   # set to 0 or 1 to match your wiring for motor 1
-DIR_POS_LEVEL_M2 = 1   # set to 0 or 1 to match your wiring for motor 2
+DIR_POS_LEVEL_M1 = 1  
+DIR_POS_LEVEL_M2 = 1   
 
 
 def setup_gpio():
@@ -36,14 +36,13 @@ def rotate_to_position(target_position, current_position, step_pin, dir_pin, ste
     current_position %= MOD
 
     raw = (target_position - current_position) % MOD   # 0..3
-    delta = raw - MOD if raw > MOD / 2 else raw        # -2..+2 (shortest path)
+    delta = raw - MOD if raw > MOD / 2 else raw        # -2..+2 
 
     step_count_per_90 = 3200 / 4
     step = abs(delta) * step_count_per_90
 
     # choose mapping for this motor from its DIR pin
     dir_pos_level = DIR_POS_LEVEL_M1 if dir_pin == DIR_PIN1 else DIR_POS_LEVEL_M2
-    # If delta > 0 (e.g., 0->1), use dir_pos_level; if delta < 0 (e.g., 0->3), use the opposite
     direction = dir_pos_level if delta > 0 else 1 - dir_pos_level
 
     print(f"Delta : {delta}  (raw={raw})")
